@@ -1,14 +1,46 @@
-class Conway
-  constructor: (@columns = 25, @rows = 25, @cellSize = 16) ->
-    @map = []
-    for j in [0...@rows]
-      @map[j] = (0 for i in [0...@columns])
+class Cell
+  constructor: (@world, @x = 0, @y = 0, @alive = false) ->
+    @neighbors = []
+    cs = @world.cellSize
+    @cell = @world.r.rect(@x * cs, @y * cs, cs, cs, 3)
+    @draw()
+    @cell.click =>
+      @next = not @alive
+      @draw()
 
+  connect: (other) ->
+    @neighbors.push other
+    other.neighbors.push this
+
+  step: ->
+    neighbors = 0
+    neighbors += 1 for neighbor in @neighbors when neighbor.alive
+    @next = @alive and 2 <= neighbors <= 3 or not @alive and neighbors == 3
+
+  draw: ->
+    if @next?
+      @alive = @next
+      @next = null
+    @cell.attr 'fill', if @alive then '#88f' else '#eee'
+
+
+class World
+  constructor: (@columns = 60, @rows = 35, @cellSize = 16) ->
     @r = Raphael("world", @columns * @cellSize, @rows * @cellSize)
+
+    @map = []
+    for x in [0...@columns]
+      @map[x] = []
+      for y in [0...@rows]
+        @map[x][y] = cell = new Cell(this, x, y)
+        if x > 0
+          cell.connect(@map[x-1][y-1]) if y > 0
+          cell.connect(@map[x-1][y])
+          cell.connect(@map[x-1][y+1]) if y < @rows-1
+        cell.connect(@map[x][y-1]) if y > 0
 
     @delay = 100
     @generation = 0
-    @draw()
 
   start: ->
     @running = true
@@ -22,32 +54,50 @@ class Conway
     @running = false
 
   step: ->
-    next = []
-    for j in [0...@rows]
-      next[j] = []
-      for i in [0...@columns]
-        neighbors =
-          (@map[j-1]?[i-1] ? 0) + (@map[j-1]?[i] ? 0) + (@map[j-1]?[i+1] ? 0) +
-          (@map[j]?[i-1] ? 0) + (@map[j]?[i+1] ? 0) +
-          (@map[j+1]?[i-1] ? 0) + (@map[j+1]?[i] ? 0) + (@map[j+1]?[i+1] ? 0)
-        next[j][i] = @map[j][i] and 2 <= neighbors <= 3 or not @map[j][i] and neighbors == 3
-
-    @map = next
+    for x in [0...@columns]
+      for y in [0...@rows]
+        @map[x][y].step()
     @generation += 1
     @draw()
 
   draw: ->
-    for j in [0...@rows]
-      for i in [0...@columns]
-        cell = @r.rect(i*@cellSize, j*@cellSize, @cellSize, @cellSize, 3)
-        cell.attr 'fill', if @map[j][i] then '#aaf' else '#ccc'
+    for x in [0...@columns]
+      for y in [0...@rows]
+        @map[x][y].draw()
+    $('#generation').text @generation
 
   randomize: ->
     @stop()
-    for j in [0...@rows]
-      for i in [0...@columns]
-        @map[j][i] = if Math.random() < 0.5 then 1 else 0
+    for x in [0...@columns]
+      for y in [0...@rows]
+        @map[x][y].next = Math.random() < 0.5
     @generation = 0
     @draw()
 
-$ -> window.world = new Conway
+  clear: ->
+    @stop()
+    for x in [0...@columns]
+      for y in [0...@rows]
+        @map[x][y].next = false
+    @generation = 0
+    @draw()
+
+
+$ ->
+  window.world = new World
+
+  $('#start-stop').click ->
+    if world.running
+      world.stop()
+      $(this).text 'Start'
+    else
+      world.start()
+      $(this).text 'Stop'
+
+  $('#randomize').click ->
+    world.randomize()
+    $('#start-stop').text 'Start'
+
+  $('#clear').click ->
+    world.clear()
+    $('#start-stop').text 'Start'
